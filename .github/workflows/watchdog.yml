@@ -1,8 +1,7 @@
 name: Mimotion Watchdog
 on:
   schedule:
-    # 北京时间 22:00 = UTC 14:00
-    - cron: "0 14 * * *"
+    - cron: "0 14 * * *"   # 北京时间 22:00
   workflow_dispatch:
 
 jobs:
@@ -25,23 +24,63 @@ jobs:
           echo "今天 run.yml 运行次数: $COUNT"
 
       - name: Trigger run.yml if missing
+        id: trigger
         if: steps.check.outputs.today_runs == '0'
         env:
           GH_TOKEN: ${{ secrets.WATCHDOG_PAT_TOKEN }}
         run: |
           echo "检测到今天未执行，触发主工作流..."
           gh workflow run run.yml --repo ${{ github.repository }}
+          sleep 15
+          RUN_ID=$(gh run list \
+            --repo ${{ github.repository }} \
+            --workflow run.yml \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "补跑 Run ID: $RUN_ID"
 
-      - name: Notify WeCom if missing
+      - name: Wait for retry to finish
+        id: wait
         if: steps.check.outputs.today_runs == '0'
+        timeout-minutes: 60
+        env:
+          GH_TOKEN: ${{ secrets.WATCHDOG_PAT_TOKEN }}
+          RUN_ID: ${{ steps.trigger.outputs.run_id }}
+        run: |
+          echo "等待补跑完成..."
+          gh run watch "$RUN_ID" --repo ${{ github.repository }} --exit-status || true
+          CONCLUSION=$(gh run view "$RUN_ID" --repo ${{ github.repository }} --json conclusion --jq '.conclusion')
+          echo "conclusion=$CONCLUSION" >> "$GITHUB_OUTPUT"
+          echo "补跑结论: $CONCLUSION"
+
+      - name: Notify WeCom if retry failed
+        if: steps.check.outputs.today_runs == '0' && steps.wait.outputs.conclusion != 'success'
         env:
           WECOM_WEBHOOK: ${{ secrets.WATCHDOG_WECOM_WEBHOOK }}
+          RUN_ID: ${{ steps.trigger.outputs.run_id }}
         run: |
-          curl -s -X POST "$WECOM_WEBHOOK" \
+          curl -sS -X POST "$WECOM_WEBHOOK" \
             -H 'Content-Type: application/json' \
-            -d '{
-              "msgtype": "text",
-              "text": {
-                "content": "⚠️ Mimotion 今天截至 22:00 未检测到执行记录，已自动触发补跑，请留意结果。"
+            -d "{
+              \"msgtype\": \"text\",
+              \"text\": {
+                \"content\": \"❌ Mimotion 今天未按时执行，已自动补跑，但补跑失败。\\nRun ID: ${RUN_ID}\\n请查看：https://github.com/${{ github.repository }}/actions/runs/${RUN_ID}\"
               }
-            }'
+            }"
+
+      - name: Notify WeCom if wait timeout
+        if: failure() && steps.check.outputs.today_runs == '0'
+        env:
+          WECOM_WEBHOOK: ${{ secrets.WATCHDOG_WECOM_WEBHOOK }}
+          RUN_ID: ${{ steps.trigger.outputs.run_id }}
+        run: |
+          curl -sS -X POST "$WECOM_WEBHOOK" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"msgtype\": \"text\",
+              \"text\": {
+                \"content\": \"⏰ Mimotion 补跑等待超时（60 分钟）仍未完成，请手动检查。\\nRun ID: ${RUN_ID:-未知}\\n请查看：https://github.com/${{ github.repository }}/actions\"
+              }
+            }"
