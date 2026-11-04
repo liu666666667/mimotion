@@ -105,7 +105,51 @@
   | TELEGRAM_BOT_TOKEN      | 设置telegram机器人的token，同时需要配置TELEGRAM_CHAT_ID，否则不会执行推送                                                            |
   | TELEGRAM_CHAT_ID        | 设置telegram的chatId，需要同时配置TELEGRAM_BOT_TOKEN，否则无法执行推送。关于这两个值如何获取，请前往官网查看。                                        |
   | SLEEP_GAP               | 多账号执行间隔，单位秒，如果账号比较多可以设置的短一点，默认为5秒                                                                              |
-  | USE_CONCURRENT          | 是否使用多线程，实验性功能，未测试是否有效。账号多的可以试试，将它设置为True即可，启用后 `SLEEP_GAP` 将不再生效                                               |
+  | USE_CONCURRENT          | 是否使用多线程，实验性功能，未测试是否有效。账号多的可以试试，将它设置为True即可，启用后 `SLEEP_GAP` 将不再生效                          操作步骤：
+第一步：确认 mimotion 主工作流状态
+你的 mimotion 仓库中应已有 .github/workflows/run.yml 文件，且该文件包含 workflow_dispatch 触发器（通常 mimotion 默认支持手动运行）。如果没有，需要在 on: 下补一行 workflow_dispatch:，否则无法被程序触发。
+
+第二步：创建 GitHub Token（PAT）
+看门狗需要用 PAT 来触发主工作流，因为默认的 GITHUB_TOKEN 在跨工作流触发时可能受限。
+
+访问 https://github.com/settings/tokens?type=beta 创建 Fine-grained token（推荐）。
+
+Repository access 选择 “Only select repositories”，勾选你的 mimotion 仓库。
+
+Repository permissions 至少勾选：
+
+Actions: Read and write
+
+Contents: Read and write
+
+Workflows: Read and write
+
+Metadata 会自动带 Read-only。
+
+生成后复制 Token 值。
+
+第三步：配置仓库 Secrets
+进入 mimotion 仓库 → Settings → Secrets and variables → Actions → New repository secret，添加以下两个：
+
+Secret 名称	值
+WATCHDOG_PAT_TOKEN	第二步生成的 GitHub Token
+WATCHDOG_WECOM_WEBHOOK	企业微信群机器人 Webhook URL（在企业微信群中添加机器人后获取）
+mimotion 自带的企业微信推送（CORPID/CORPSECRET）用于执行完成后报告结果，与看门狗无关，不需要复用。看门狗需要独立的群机器人 Webhook。
+访问 https://github.com/settings/tokens（Classic token 创建页面）。
+
+点击 Generate new token (classic)。
+
+勾选以下 scope：
+
+repo（完整仓库读写权限）
+
+workflow（更新 GitHub Actions 工作流的权限，这是触发 workflow_dispatch 的关键）
+
+生成后复制 Token。
+
+回到你的 mimotion 仓库 → Settings → Secrets and variables → Actions，找到 WATCHDOG_PAT_TOKEN，点击编辑，把值替换为新生成的 Classic PAT。
+
+重新运行看门狗工作流验证。                    |
 
 ### 三、多账户设置(如用不上请忽略)
 
