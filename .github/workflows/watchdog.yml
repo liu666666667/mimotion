@@ -25,7 +25,7 @@ jobs:
           echo "今天 run.yml 运行次数: $COUNT"
 
       - name: Trigger run.yml if missing
-        if: steps.check.outputs.today_runs == '4'
+        if: steps.check.outputs.today_runs == '0'
         env:
           GH_TOKEN: ${{ secrets.WATCHDOG_PAT_TOKEN }}
         run: |
@@ -33,7 +33,7 @@ jobs:
           gh workflow run run.yml --repo ${{ github.repository }}
 
       - name: Notify WeCom if missing
-        if: steps.check.outputs.today_runs == '4'
+        if: steps.check.outputs.today_runs == '0'
         env:
           WECOM_WEBHOOK: ${{ secrets.WATCHDOG_WECOM_WEBHOOK }}
         run: |
