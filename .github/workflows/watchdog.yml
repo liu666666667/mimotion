@@ -25,7 +25,7 @@ jobs:
 
       - name: Trigger run.yml if missing
         id: trigger
-        if: steps.check.outputs.today_runs == '0'
+        if: steps.check.outputs.today_runs == '5'
         env:
           GH_TOKEN: ${{ secrets.WATCHDOG_PAT_TOKEN }}
         run: |
@@ -43,7 +43,7 @@ jobs:
 
       - name: Wait for retry to finish
         id: wait
-        if: steps.check.outputs.today_runs == '0'
+        if: steps.check.outputs.today_runs == '5'
         timeout-minutes: 60
         env:
           GH_TOKEN: ${{ secrets.WATCHDOG_PAT_TOKEN }}
