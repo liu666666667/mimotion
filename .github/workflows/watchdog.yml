@@ -1,0 +1,47 @@
+name: Mimotion Watchdog
+on:
+  schedule:
+    # 北京时间 22:00 = UTC 14:00
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+
+jobs:
+  check-and-trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check today's runs of run.yml
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.WATCHDOG_PAT_TOKEN }}
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          COUNT=$(gh run list \
+            --repo ${{ github.repository }} \
+            --workflow run.yml \
+            --limit 50 \
+            --json createdAt \
+            --jq "[.[] | select(.createdAt | startswith(\"$TODAY\"))] | length")
+          echo "today_runs=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "今天 run.yml 运行次数: $COUNT"
+
+      - name: Trigger run.yml if missing
+        if: steps.check.outputs.today_runs == '0'
+        env:
+          GH_TOKEN: ${{ secrets.WATCHDOG_PAT_TOKEN }}
+        run: |
+          echo "检测到今天未执行，触发主工作流..."
+          gh workflow run run.yml --repo ${{ github.repository }}
+
+      - name: Notify WeCom if missing
+        if: steps.check.outputs.today_runs == '0'
+        env:
+          WECOM_WEBHOOK: ${{ secrets.WATCHDOG_WECOM_WEBHOOK }}
+        run: |
+          curl -s -X POST "$WECOM_WEBHOOK" \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "msgtype": "text",
+              "text": {
+                "content": "⚠️ Mimotion 今天截至 22:00 未检测到执行记录，已自动触发补跑，请留意结果。"
+              }
+            }'
