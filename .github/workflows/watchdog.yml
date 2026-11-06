@@ -1,35 +1,61 @@
 name: Mimotion Watchdog
 on:
   schedule:
-    - cron: "0 14 * * *"   # 北京时间 22:00
+    - cron: "0 14 * * *"   # 北京时间 22:00，UTC 14:00
   workflow_dispatch:
 
 jobs:
   check-and-trigger:
     runs-on: ubuntu-latest
     steps:
-      - name: Check today's runs of run.yml
+      - name: Check today's window success
         id: check
         env:
           GH_TOKEN: ${{ secrets.WATCHDOG_PAT_TOKEN }}
         run: |
           TODAY=$(date -u +%Y-%m-%d)
+
+          # 从 run.yml 读取 cron，取小时字段的最小值作为窗口起点（UTC）
+          CONTENT=$(gh api "repos/${{ github.repository }}/contents/.github/workflows/run.yml" --jq '.content' | base64 -d)
+          HOURS=$(echo "$CONTENT" \
+            | grep -E '^[[:space:]]*-[[:space:]]*cron:' \
+            | sed -E "s/.*cron:[[:space:]]*['\"]?([^'\"]*)['\"]?.*/\1/" \
+            | awk '{print $2}')
+
+          MIN_HOUR=99
+          for h in $(echo "$HOURS" | tr ',' ' '); do
+            if [[ "$h" == *-* ]]; then
+              start=${h%-*}
+              [[ "$start" =~ ^[0-9]+$ ]] && [ "$start" -lt "$MIN_HOUR" ] && MIN_HOUR=$start
+            elif [[ "$h" =~ ^[0-9]+$ ]]; then
+              [ "$h" -lt "$MIN_HOUR" ] && MIN_HOUR=$h
+            fi
+          done
+
+          if [ "$MIN_HOUR" -eq 99 ]; then
+            echo "无法解析 run.yml 的 cron 小时字段，回退到 07"
+            MIN_HOUR=7
+          fi
+
+          WINDOW_START="${TODAY}T$(printf '%02d' "$MIN_HOUR"):00:00Z"
+          echo "窗口起点（UTC）: $WINDOW_START"
+
           COUNT=$(gh run list \
             --repo ${{ github.repository }} \
             --workflow run.yml \
             --limit 50 \
-            --json createdAt \
-            --jq "[.[] | select(.createdAt | startswith(\"$TODAY\"))] | length")
-          echo "today_runs=$COUNT" >> "$GITHUB_OUTPUT"
-          echo "今天 run.yml 运行次数: $COUNT"
+            --json createdAt,conclusion \
+            --jq "[.[] | select(.createdAt >= \"$WINDOW_START\" and .conclusion == \"success\")] | length")
+          echo "window_success=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "今天窗口内 run.yml 成功运行次数: $COUNT"
 
       - name: Trigger run.yml if missing
         id: trigger
-        if: steps.check.outputs.today_runs == '0'
+        if: steps.check.outputs.window_success == '0'
         env:
           GH_TOKEN: ${{ secrets.WATCHDOG_PAT_TOKEN }}
         run: |
-          echo "检测到今天未执行，触发主工作流..."
+          echo "检测到今天窗口内没有成功运行，触发主工作流..."
           gh workflow run run.yml --repo ${{ github.repository }}
           sleep 15
           RUN_ID=$(gh run list \
@@ -43,7 +69,7 @@ jobs:
 
       - name: Wait for retry to finish
         id: wait
-        if: steps.check.outputs.today_runs == '0'
+        if: steps.check.outputs.window_success == '0'
         timeout-minutes: 60
         env:
           GH_TOKEN: ${{ secrets.WATCHDOG_PAT_TOKEN }}
@@ -56,7 +82,7 @@ jobs:
           echo "补跑结论: $CONCLUSION"
 
       - name: Notify WeCom if retry failed
-        if: steps.check.outputs.today_runs == '0' && steps.wait.outputs.conclusion != 'success'
+        if: steps.check.outputs.window_success == '0' && steps.wait.outputs.conclusion != 'success'
         env:
           WECOM_WEBHOOK: ${{ secrets.WATCHDOG_WECOM_WEBHOOK }}
           RUN_ID: ${{ steps.trigger.outputs.run_id }}
@@ -66,12 +92,12 @@ jobs:
             -d "{
               \"msgtype\": \"text\",
               \"text\": {
-                \"content\": \"❌ Mimotion 今天未按时执行，已自动补跑，但补跑失败。\\nRun ID: ${RUN_ID}\\n请查看：https://github.com/${{ github.repository }}/actions/runs/${RUN_ID}\"
+                \"content\": \"❌ Mimotion 今天窗口内未成功执行，已自动补跑，但补跑失败。\\nRun ID: ${RUN_ID}\\n请查看：https://github.com/${{ github.repository }}/actions/runs/${RUN_ID}\"
               }
             }"
 
       - name: Notify WeCom if wait timeout
-        if: failure() && steps.check.outputs.today_runs == '0'
+        if: failure() && steps.check.outputs.window_success == '0'
         env:
           WECOM_WEBHOOK: ${{ secrets.WATCHDOG_WECOM_WEBHOOK }}
           RUN_ID: ${{ steps.trigger.outputs.run_id }}
