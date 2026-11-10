@@ -1,7 +1,7 @@
 name: Mimotion Watchdog
 on:
-  schedule:
-    - cron: "0 14 * * *"   # 北京时间 22:00，UTC 14:00
+  # schedule:
+  #  - cron: "0 14 * * *"   # 北京时间 22:00，UTC 14:00
   workflow_dispatch:
 
 jobs:
