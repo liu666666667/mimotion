@@ -2,7 +2,7 @@ name: 刷步数
 
 on:
   schedule:
-    - cron: '40 7,8,9,10,11,12 * * *'
+    - cron: '55 7,8,9,10,11,12 * * *'
   workflow_dispatch:
 
 jobs:
@@ -15,47 +15,34 @@ jobs:
         with:
           token: ${{ secrets.PAT }}
 
-      - name: Update system and install zsh
+      - name: 安全切换为阿里云源
         run: |
-          echo ">>> 正在智能探测并切换最快源..."
+          echo ">>> 正在安全替换系统源..."
           
-          # 准备阿里云源的配置内容
-          ALI_SOURCE="deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -cs) main restricted universe multiverse
-          deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -cs)-updates main restricted universe multiverse
-          deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -cs)-security main restricted universe multiverse"
+          # 1. 把默认源文件里的 ubuntu 官方域名统一替换成阿里云
+          sudo sed -i "s/archive.ubuntu.com/mirrors.aliyun.com/g" /etc/apt/sources.list
+          sudo sed -i "s/security.ubuntu.com/mirrors.aliyun.com/g" /etc/apt/sources.list
           
-          # 准备国外官方源的配置内容
-          OFFICIAL_SOURCE="deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -cs) main restricted universe multiverse
-          deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -cs)-updates main restricted universe multiverse
-          deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -cs)-security main restricted universe multiverse"
-          
-          # 1秒极速探测：能用阿里用阿里，不能用就用国外默认源
-          if curl -s --max-time 1 http://mirrors.aliyun.com/ubuntu/ > /dev/null; then
-            echo "检测到阿里云通畅，正在写入阿里云源..."
-            echo "$ALI_SOURCE" | sudo tee /etc/apt/sources.list > /dev/null
-          else
-            echo "阿里云连接超时，自动回退并使用国外官方源..."
-            echo "$OFFICIAL_SOURCE" | sudo tee /etc/apt/sources.list > /dev/null
-          fi
-
-          # 清理微软 Azure 干扰源，避免卡顿
+          # 2. 尝试屏蔽第三方干扰源（加了 || true，如果删不掉也不报错，直接跳过）
           sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list || true
-          
-          # 极速更新并安装 zsh
+
+          # 3. 极速更新
           sudo apt-get update -y
-          sudo apt-get install -y zsh
 
       - name: 初始化Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+          cache: 'pip'
 
-      - name: 开始
+      - name: 开始执行脚本
         env:
           CONFIG: ${{ secrets.CONFIG }}
           AES_KEY: ${{ secrets.AES_KEY }}
         run: |
+          echo ">>> 正在极速安装项目依赖..."
           pip3 install -r requirements.txt
+          echo ">>> 开始执行主程序..."
           python3 main.py
 
       - name: persist tokens
@@ -63,5 +50,5 @@ jobs:
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add .
-          git commit -m "persist tokens"
+          git commit -m "persist tokens triggered by ${{ github.event_name }}"
           git push origin master
