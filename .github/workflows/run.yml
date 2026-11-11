@@ -2,55 +2,40 @@ name: 刷步数
 
 on:
   schedule:
-    - cron: '55 7,8,9,10,11,12 * * *'
+    - cron: '40 10,12,14 * * *'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     steps:
       - name: Checkout codes
         uses: actions/checkout@v5
         with:
-          token: ${{ secrets.PAT }}
-
-      - name: 安全切换为阿里云源
+          token: ${{ secrets.PAT }} #此处PAT需要申请，教程详见：README
+      - name: Update system and install zsh
         run: |
-          echo ">>> 正在精准屏蔽官方源并切换阿里云..."
+          sudo -E apt-get -qq update
+          sudo -E apt-get install zsh -y
           
-          # 1. 精准删除所有系统默认源，不伤及系统核心，绝对不报错
-          sudo sed -i "s/deb http:\/\/archive.ubuntu.com/# &/" /etc/apt/sources.list
-          sudo sed -i "s/deb http:\/\/security.ubuntu.com/# &/" /etc/apt/sources.list
-          
-          # 2. 强制追加纯净的阿里云源，确保 100% 走国内极速通道
-          sudo sh -c 'echo "deb http://mirrors.aliyun.com/ubuntu/ noble main restricted universe multiverse" >> /etc/apt/sources.list'
-          sudo sh -c 'echo "deb http://mirrors.aliyun.com/ubuntu/ noble-updates main restricted universe multiverse" >> /etc/apt/sources.list'
-          sudo sh -c 'echo "deb http://mirrors.aliyun.com/ubuntu/ noble-security main restricted universe multiverse" >> /etc/apt/sources.list'
-          
-          # 3. 极速更新系统
-          sudo apt-get update -y
-
       - name: 初始化Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
-          cache: 'pip'
-
-      - name: 开始执行脚本
+          
+      - name: 开始
         env:
-          CONFIG: ${{ secrets.CONFIG }}
-          AES_KEY: ${{ secrets.AES_KEY }}
+            CONFIG: ${{ secrets.CONFIG }}
+            AES_KEY: ${{ secrets.AES_KEY }}
         run: |
-          echo ">>> 正在极速安装项目依赖..."
           pip3 install -r requirements.txt
-          echo ">>> 开始执行主程序..."
           python3 main.py
 
       - name: persist tokens
         run: |
           git config user.name github-actions
-          git config user.email github-actions@github.com
+          git config user.email github-actions@users.noreply.github.com
           git add .
-          git commit -m "persist tokens triggered by ${{ github.event_name }}" | echo "No changes to commit"
-          git push origin master | echo "Push skipped"
+          git commit -m "persist tokens trigger by ${{ github.event_name }}"
+          git push origin master
