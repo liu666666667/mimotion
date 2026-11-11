@@ -17,14 +17,17 @@ jobs:
 
       - name: Update system and install zsh
         run: |
-          # 暴力强制切换阿里云源
-          echo "正在暴力强制切换阿里云源..."
-          sudo rm -f /etc/apt/sources.list
-          sudo touch /etc/apt/sources.list
-          sudo echo "deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -cs) main restricted universe multiverse" >> /etc/apt/sources.list
-          sudo echo "deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -cs)-updates main restricted universe multiverse" >> /etc/apt/sources.list
-          sudo echo "deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -cs)-backports main restricted universe multiverse" >> /etc/apt/sources.list
-          sudo echo "deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -cs)-security main restricted universe multiverse" >> /etc/apt/sources.list
+          echo "正在探测网络并自动切换最快镜像源..."
+          
+          # 尝试连接阿里云，如果1秒内没响应，就放弃并使用海外官方源
+          if curl -s --max-time 1 http://mirrors.aliyun.com/ubuntu/ > /dev/null; then
+            echo "检测到阿里云源可用，正在切换..."
+            sudo sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
+            sudo sed -i 's|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
+          else
+            echo "阿里云源连接慢/不可用，已自动切换至海外官方默认源..."
+            # 默认就是官方源，这里不需要额外操作，直接执行更新即可
+          fi
           
           sudo apt-get update -y
           sudo apt-get install -y --fix-missing zsh
@@ -45,7 +48,7 @@ jobs:
       - name: persist tokens
         run: |
           git config user.name github-actions
-          git config user.email github-actions@users.noreply.github.com
+          git config user.email github-actions@github.com
           git add .
           git commit -m "persist tokens trigger by ${{ github.event_name }}"
           git push origin master
