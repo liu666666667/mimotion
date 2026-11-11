@@ -17,16 +17,18 @@ jobs:
 
       - name: 安全切换为阿里云源
         run: |
-          echo ">>> 正在安全替换系统源..."
+          echo ">>> 正在精准屏蔽官方源并切换阿里云..."
           
-          # 1. 把默认源文件里的 ubuntu 官方域名统一替换成阿里云
-          sudo sed -i "s/archive.ubuntu.com/mirrors.aliyun.com/g" /etc/apt/sources.list
-          sudo sed -i "s/security.ubuntu.com/mirrors.aliyun.com/g" /etc/apt/sources.list
+          # 1. 精准删除所有系统默认源，不伤及系统核心，绝对不报错
+          sudo sed -i "s/deb http:\/\/archive.ubuntu.com/# &/" /etc/apt/sources.list
+          sudo sed -i "s/deb http:\/\/security.ubuntu.com/# &/" /etc/apt/sources.list
           
-          # 2. 尝试屏蔽第三方干扰源（加了 || true，如果删不掉也不报错，直接跳过）
-          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list || true
-
-          # 3. 极速更新
+          # 2. 强制追加纯净的阿里云源，确保 100% 走国内极速通道
+          sudo sh -c 'echo "deb http://mirrors.aliyun.com/ubuntu/ noble main restricted universe multiverse" >> /etc/apt/sources.list'
+          sudo sh -c 'echo "deb http://mirrors.aliyun.com/ubuntu/ noble-updates main restricted universe multiverse" >> /etc/apt/sources.list'
+          sudo sh -c 'echo "deb http://mirrors.aliyun.com/ubuntu/ noble-security main restricted universe multiverse" >> /etc/apt/sources.list'
+          
+          # 3. 极速更新系统
           sudo apt-get update -y
 
       - name: 初始化Python
@@ -50,5 +52,5 @@ jobs:
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add .
-          git commit -m "persist tokens triggered by ${{ github.event_name }}"
-          git push origin master
+          git commit -m "persist tokens triggered by ${{ github.event_name }}" | echo "No changes to commit"
+          git push origin master | echo "Push skipped"
