@@ -2,32 +2,40 @@ name: 刷步数
 
 on:
   schedule:
-    - cron: '38 7,8,9,10,11,12 * * *'
+    - cron: '55 7,8,9,10,11,12 * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Checkout codes
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.PAT }}
 
-      - name: 强制切换阿里云源并更新
+      - name: 极速切源（绕过限制）
         run: |
-          # 彻底清空系统默认源，杜绝它连不上官方源的隐患
-          echo "deb http://mirrors.aliyun.com/ubuntu/ noble main restricted universe multiverse" | sudo tee /etc/apt/sources.list
-          echo "deb http://mirrors.aliyun.com/ubuntu/ noble-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          echo "deb http://mirrors.aliyun.com/ubuntu/ noble-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          # 直接把源目录下的所有文件强制置空，让系统读不到任何内容
+          sudo truncate -s 0 /etc/apt/sources.list.d/ubuntu.sources
+          sudo truncate -s 0 /etc/apt/sources.list
+          
+          # 写入纯净的阿里云源
+          sudo sh -c 'echo "deb http://mirrors.aliyun.com/ubuntu/ noble main restricted universe multiverse" >> /etc/apt/sources.list'
+          sudo sh -c 'echo "deb http://mirrors.aliyun.com/ubuntu/ noble-updates main restricted universe multiverse" >> /etc/apt/sources.list'
+          sudo sh -c 'echo "deb http://mirrors.aliyun.com/ubuntu/ noble-security main restricted universe multiverse" >> /etc/apt/sources.list'
+          
+          # 极速更新
           sudo apt-get update -y
 
-      - name: 初始化Python
-        uses: actions/setup-python@v4
+      - name: 初始化 Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-          cache: 'pip'
 
       - name: 安装依赖并执行脚本
         env:
