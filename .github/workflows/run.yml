@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     steps:
       - name: Checkout codes
         uses: actions/checkout@v5
@@ -17,20 +17,33 @@ jobs:
 
       - name: Update system and install zsh
         run: |
-          echo "正在探测网络并自动切换最快镜像源..."
+          echo ">>> 正在智能探测并切换最快源..."
           
-          # 尝试连接阿里云，如果1秒内没响应，就放弃并使用海外官方源
+          # 准备阿里云源的配置内容
+          ALI_SOURCE="deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -cs) main restricted universe multiverse
+          deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -cs)-updates main restricted universe multiverse
+          deb http://mirrors.aliyun.com/ubuntu/ $(lsb_release -cs)-security main restricted universe multiverse"
+          
+          # 准备国外官方源的配置内容
+          OFFICIAL_SOURCE="deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -cs) main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -cs)-updates main restricted universe multiverse
+          deb http://archive.ubuntu.com/ubuntu/ $(lsb_release -cs)-security main restricted universe multiverse"
+          
+          # 1秒极速探测：能用阿里用阿里，不能用就用国外默认源
           if curl -s --max-time 1 http://mirrors.aliyun.com/ubuntu/ > /dev/null; then
-            echo "检测到阿里云源可用，正在切换..."
-            sudo sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
-            sudo sed -i 's|http://security.ubuntu.com|http://mirrors.aliyun.com|g' /etc/apt/sources.list
+            echo "检测到阿里云通畅，正在写入阿里云源..."
+            echo "$ALI_SOURCE" | sudo tee /etc/apt/sources.list > /dev/null
           else
-            echo "阿里云源连接慢/不可用，已自动切换至海外官方默认源..."
-            # 默认就是官方源，这里不需要额外操作，直接执行更新即可
+            echo "阿里云连接超时，自动回退并使用国外官方源..."
+            echo "$OFFICIAL_SOURCE" | sudo tee /etc/apt/sources.list > /dev/null
           fi
+
+          # 清理微软 Azure 干扰源，避免卡顿
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list || true
           
+          # 极速更新并安装 zsh
           sudo apt-get update -y
-          sudo apt-get install -y --fix-missing zsh
+          sudo apt-get install -y zsh
 
       - name: 初始化Python
         uses: actions/setup-python@v6
@@ -50,5 +63,5 @@ jobs:
           git config user.name github-actions
           git config user.email github-actions@github.com
           git add .
-          git commit -m "persist tokens trigger by ${{ github.event_name }}"
+          git commit -m "persist tokens"
           git push origin master
