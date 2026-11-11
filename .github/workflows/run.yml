@@ -2,32 +2,37 @@ name: 刷步数
 
 on:
   schedule:
-    - cron: '40 10,12,14 * * *'
+    - cron: '55 7,8,9,10,11,12 * * *'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 10
     steps:
       - name: Checkout codes
-        uses: actions/checkout@v5
+        uses: actions/checkout@v3
         with:
-          token: ${{ secrets.PAT }} #此处PAT需要申请，教程详见：README
-      - name: Update system and install zsh
+          token: ${{ secrets.PAT }}
+
+      - name: 强制切换阿里云源并更新
         run: |
-          sudo -E apt-get -qq update
-          sudo -E apt-get install zsh -y
-          
+          # 彻底清空系统默认源，杜绝它连不上官方源的隐患
+          echo "deb http://mirrors.aliyun.com/ubuntu/ noble main restricted universe multiverse" | sudo tee /etc/apt/sources.list
+          echo "deb http://mirrors.aliyun.com/ubuntu/ noble-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb http://mirrors.aliyun.com/ubuntu/ noble-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          sudo apt-get update -y
+
       - name: 初始化Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v4
         with:
           python-version: "3.10"
-          
-      - name: 开始
+          cache: 'pip'
+
+      - name: 安装依赖并执行脚本
         env:
-            CONFIG: ${{ secrets.CONFIG }}
-            AES_KEY: ${{ secrets.AES_KEY }}
+          CONFIG: ${{ secrets.CONFIG }}
+          AES_KEY: ${{ secrets.AES_KEY }}
         run: |
           pip3 install -r requirements.txt
           python3 main.py
@@ -35,7 +40,7 @@ jobs:
       - name: persist tokens
         run: |
           git config user.name github-actions
-          git config user.email github-actions@users.noreply.github.com
+          git config user.email github-actions@github.com
           git add .
-          git commit -m "persist tokens trigger by ${{ github.event_name }}"
-          git push origin master
+          git commit -m "persist tokens triggered by ${{ github.event_name }}" || echo "No changes to commit"
+          git push origin master || echo "Push skipped"
